@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Display Manager</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+
+  h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 2rem; color: #f8fafc; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 0 0 1rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; }
+
+  .container { max-width: 680px; margin: 0 auto; }
+
+  .card {
+    background: #1e2130;
+    border: 1px solid #2d3348;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  label { display: block; font-size: .85rem; color: #94a3b8; margin-bottom: .3rem; }
+
+  input[type="text"], input[type="number"], select {
+    width: 100%;
+    background: #0f1117;
+    border: 1px solid #2d3348;
+    border-radius: 6px;
+    color: #e2e8f0;
+    padding: .45rem .75rem;
+    font-size: .95rem;
+    outline: none;
+    transition: border-color .15s;
+  }
+  input[type="text"]:focus, input[type="number"]:focus, select:focus {
+    border-color: #6366f1;
+  }
+
+  .row { display: flex; gap: .75rem; align-items: flex-end; }
+  .row > * { flex: 1; }
+  .row > .btn-add { flex: 0 0 auto; }
+
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 6px;
+    padding: .45rem 1rem;
+    font-size: .9rem;
+    font-weight: 500;
+    transition: background .15s, opacity .15s;
+  }
+  button:disabled { opacity: .4; cursor: default; }
+
+  .btn-primary { background: #6366f1; color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #4f46e5; }
+
+  .btn-danger { background: #ef4444; color: #fff; padding: .3rem .7rem; font-size: .8rem; }
+  .btn-danger:hover:not(:disabled) { background: #dc2626; }
+
+  .btn-ghost { background: #2d3348; color: #e2e8f0; }
+  .btn-ghost:hover:not(:disabled) { background: #3a4060; }
+
+  /* URL list */
+  #url-list { list-style: none; margin: 0; padding: 0; }
+
+  .url-item {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .6rem .5rem;
+    border-radius: 6px;
+    margin-bottom: .25rem;
+    background: #0f1117;
+    border: 1px solid #2d3348;
+    cursor: grab;
+  }
+  .url-item:active { cursor: grabbing; }
+  .url-item.dragging { opacity: .4; }
+  .url-item.drag-over { border-color: #6366f1; }
+
+  .drag-handle { color: #4a5568; font-size: 1rem; user-select: none; }
+
+  .url-info { flex: 1; min-width: 0; }
+  .url-label { font-size: .9rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .url-href { font-size: .75rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .url-item.active-item .url-label { color: #818cf8; }
+
+  .empty-state { color: #4a5568; font-size: .9rem; padding: .5rem 0; }
+
+  /* Mode controls */
+  .mode-row { display: flex; gap: .75rem; margin-bottom: 1rem; }
+  .mode-btn {
+    flex: 1;
+    padding: .55rem;
+    background: #0f1117;
+    border: 1px solid #2d3348;
+    color: #94a3b8;
+    border-radius: 6px;
+    font-size: .9rem;
+  }
+  .mode-btn.selected {
+    background: #312e81;
+    border-color: #6366f1;
+    color: #e0e7ff;
+  }
+
+  #interval-row { display: none; margin-bottom: 1rem; }
+  #single-row { display: none; margin-bottom: 1rem; }
+
+  .save-row { display: flex; justify-content: flex-end; }
+
+  .toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    background: #22c55e;
+    color: #fff;
+    padding: .6rem 1.2rem;
+    border-radius: 8px;
+    font-size: .9rem;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity .2s, transform .2s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: #ef4444; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Display Manager</h1>
+
+  <!-- URL List -->
+  <div class="card">
+    <h2>URLs</h2>
+    <ul id="url-list"><li class="empty-state">No URLs yet.</li></ul>
+
+    <div style="margin-top:1rem;">
+      <div class="row">
+        <div>
+          <label for="new-label">Label</label>
+          <input type="text" id="new-label" placeholder="My Dashboard">
+        </div>
+        <div>
+          <label for="new-url">URL</label>
+          <input type="text" id="new-url" placeholder="https://...">
+        </div>
+        <button class="btn-primary btn-add" id="btn-add">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Display Settings -->
+  <div class="card">
+    <h2>Display Mode</h2>
+
+    <div class="mode-row">
+      <button class="mode-btn" id="btn-single" data-mode="single">Single</button>
+      <button class="mode-btn" id="btn-cycle" data-mode="cycle">Cycle</button>
+    </div>
+
+    <div id="single-row">
+      <label for="active-select">Active URL</label>
+      <select id="active-select"></select>
+    </div>
+
+    <div id="interval-row">
+      <label for="interval-input">Cycle interval (seconds)</label>
+      <input type="number" id="interval-input" min="5" max="3600" value="30">
+    </div>
+
+    <div class="save-row">
+      <button class="btn-primary" id="btn-save">Save settings</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let state = { mode: "single", interval_secs: 30, active_url: null, urls: [] };
+  let dragSrc = null;
+
+  async function api(method, path, body) {
+    const opts = { method, headers: { "Content-Type": "application/json" } };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const r = await fetch(path, opts);
+    if (!r.ok) throw new Error(await r.text());
+    if (r.status === 204) return null;
+    return r.json();
+  }
+
+  function toast(msg, isError = false) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.className = "toast show" + (isError ? " error" : "");
+    setTimeout(() => el.className = "toast", 2500);
+  }
+
+  function renderUrls() {
+    const list = document.getElementById("url-list");
+    const activeId = state.active_url ? state.active_url.id : null;
+
+    if (state.urls.length === 0) {
+      list.innerHTML = '<li class="empty-state">No URLs yet.</li>';
+    } else {
+      list.innerHTML = state.urls.map(u => `
+        <li class="url-item${u.id === activeId ? " active-item" : ""}"
+            draggable="true" data-id="${u.id}">
+          <span class="drag-handle">⠿</span>
+          <div class="url-info">
+            <div class="url-label">${esc(u.label)}</div>
+            <div class="url-href">${esc(u.url)}</div>
+          </div>
+          <button class="btn-danger" data-del="${u.id}">Remove</button>
+        </li>
+      `).join("");
+
+      list.querySelectorAll("[data-del]").forEach(btn => {
+        btn.addEventListener("click", () => deleteUrl(+btn.dataset.del));
+      });
+
+      list.querySelectorAll(".url-item").forEach(addDragListeners);
+    }
+
+    // rebuild active-url select
+    const sel = document.getElementById("active-select");
+    sel.innerHTML = state.urls.map(u =>
+      `<option value="${u.id}"${u.id === activeId ? " selected" : ""}>${esc(u.label)}</option>`
+    ).join("");
+  }
+
+  function renderMode() {
+    const { mode, interval_secs } = state;
+    document.getElementById("btn-single").className = "mode-btn" + (mode === "single" ? " selected" : "");
+    document.getElementById("btn-cycle").className  = "mode-btn" + (mode === "cycle"  ? " selected" : "");
+    document.getElementById("single-row").style.display  = mode === "single" ? "block" : "none";
+    document.getElementById("interval-row").style.display = mode === "cycle"  ? "block" : "none";
+    document.getElementById("interval-input").value = interval_secs;
+  }
+
+  async function load() {
+    state = await api("GET", "/api/config");
+    renderUrls();
+    renderMode();
+  }
+
+  async function deleteUrl(id) {
+    await api("DELETE", `/api/urls/${id}`);
+    state = await api("GET", "/api/config");
+    renderUrls();
+    renderMode();
+    toast("URL removed");
+  }
+
+  document.getElementById("btn-add").addEventListener("click", async () => {
+    const label = document.getElementById("new-label").value.trim();
+    const url   = document.getElementById("new-url").value.trim();
+    if (!url) { toast("URL is required", true); return; }
+    try {
+      await api("POST", "/api/urls", { label: label || url, url });
+      document.getElementById("new-label").value = "";
+      document.getElementById("new-url").value = "";
+      state = await api("GET", "/api/config");
+      renderUrls();
+      renderMode();
+      toast("URL added");
+    } catch (e) { toast(e.message, true); }
+  });
+
+  document.getElementById("btn-single").addEventListener("click", () => {
+    state.mode = "single"; renderMode();
+  });
+  document.getElementById("btn-cycle").addEventListener("click", () => {
+    state.mode = "cycle"; renderMode();
+  });
+
+  document.getElementById("btn-save").addEventListener("click", async () => {
+    const body = {
+      mode: state.mode,
+      interval_secs: +document.getElementById("interval-input").value,
+    };
+    if (state.mode === "single") {
+      const sel = document.getElementById("active-select");
+      body.active_url_id = sel.value ? +sel.value : null;
+    }
+    try {
+      state = await api("PUT", "/api/config", body);
+      renderUrls();
+      renderMode();
+      toast("Settings saved");
+    } catch (e) { toast(e.message, true); }
+  });
+
+  // Drag-to-reorder
+  function addDragListeners(item) {
+    item.addEventListener("dragstart", e => {
+      dragSrc = item;
+      item.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    item.addEventListener("dragend", () => {
+      item.classList.remove("dragging");
+      document.querySelectorAll(".url-item").forEach(i => i.classList.remove("drag-over"));
+    });
+    item.addEventListener("dragover", e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      document.querySelectorAll(".url-item").forEach(i => i.classList.remove("drag-over"));
+      if (item !== dragSrc) item.classList.add("drag-over");
+    });
+    item.addEventListener("drop", async e => {
+      e.preventDefault();
+      if (!dragSrc || dragSrc === item) return;
+      const list = document.getElementById("url-list");
+      const items = [...list.querySelectorAll(".url-item")];
+      const srcIdx = items.indexOf(dragSrc);
+      const dstIdx = items.indexOf(item);
+      if (srcIdx < dstIdx) item.after(dragSrc); else item.before(dragSrc);
+      const ids = [...list.querySelectorAll(".url-item")].map(i => +i.dataset.id);
+      await api("PUT", "/api/urls/reorder", { ids });
+      state = await api("GET", "/api/config");
+      renderUrls();
+      renderMode();
+    });
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  load();
+</script>
+</body>
+</html>

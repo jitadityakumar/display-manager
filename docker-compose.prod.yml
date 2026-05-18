@@ -1,0 +1,10 @@
+services:
+  display-manager:
+    image: display-manager:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /opt/display-manager/data:/data
+    environment:
+      DB_PATH: /data/display.db
+    restart: always

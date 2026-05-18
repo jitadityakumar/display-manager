@@ -1,0 +1,14 @@
+services:
+  display-manager:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./app.py:/app/app.py
+      - ./templates:/app/templates
+    environment:
+      DB_PATH: /data/display.db
+      FLASK_DEBUG: "1"
+    command: python app.py
+    restart: unless-stopped

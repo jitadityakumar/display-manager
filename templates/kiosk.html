@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiosk</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+  #error {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #111;
+    color: #ccc;
+    font-family: monospace;
+    font-size: 1.4rem;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<iframe id="frame" src="about:blank" allowfullscreen></iframe>
+<div id="error">No URL configured.<br>Visit <strong>/admin</strong> to add one.</div>
+
+<script>
+  const frame = document.getElementById("frame");
+  const errorEl = document.getElementById("error");
+
+  let urls = [];
+  let cycleIndex = 0;
+  let cycleTimer = null;
+  let pollTimer = null;
+
+  function showUrl(url) {
+    if (!url) {
+      frame.style.display = "none";
+      errorEl.style.display = "flex";
+      return;
+    }
+    errorEl.style.display = "none";
+    frame.style.display = "block";
+    if (frame.src !== url) frame.src = url;
+  }
+
+  function applyConfig(cfg) {
+    clearTimeout(cycleTimer);
+
+    if (cfg.mode === "single") {
+      showUrl(cfg.active_url ? cfg.active_url.url : null);
+    } else {
+      // cycle mode
+      urls = (cfg.urls || []).map(u => u.url);
+      if (urls.length === 0) {
+        showUrl(null);
+        return;
+      }
+      cycleIndex = cycleIndex % urls.length;
+      showUrl(urls[cycleIndex]);
+
+      function next() {
+        cycleIndex = (cycleIndex + 1) % urls.length;
+        showUrl(urls[cycleIndex]);
+        cycleTimer = setTimeout(next, cfg.interval_secs * 1000);
+      }
+      cycleTimer = setTimeout(next, cfg.interval_secs * 1000);
+    }
+  }
+
+  function poll() {
+    fetch("/api/config")
+      .then(r => r.json())
+      .then(cfg => {
+        applyConfig(cfg);
+        // re-poll: use interval_secs but clamp between 10s and 60s
+        const delay = Math.min(60, Math.max(10, cfg.interval_secs)) * 1000;
+        pollTimer = setTimeout(poll, delay);
+      })
+      .catch(() => {
+        pollTimer = setTimeout(poll, 15000);
+      });
+  }
+
+  poll();
+</script>
+</body>
+</html>
