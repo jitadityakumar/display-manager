@@ -11,4 +11,3 @@ services:
       DB_PATH: /data/display.db
       FLASK_DEBUG: "1"
     command: python app.py
-    restart: unless-stopped

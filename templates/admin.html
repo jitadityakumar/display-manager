@@ -67,9 +67,6 @@
   .btn-danger { background: #ef4444; color: #fff; padding: .3rem .7rem; font-size: .8rem; }
   .btn-danger:hover:not(:disabled) { background: #dc2626; }
 
-  .btn-ghost { background: #2d3348; color: #e2e8f0; }
-  .btn-ghost:hover:not(:disabled) { background: #3a4060; }
-
   /* URL list */
   #url-list { list-style: none; margin: 0; padding: 0; }
 
@@ -230,7 +227,7 @@
       `).join("");
 
       list.querySelectorAll("[data-del]").forEach(btn => {
-        btn.addEventListener("click", () => deleteUrl(+btn.dataset.del));
+        btn.addEventListener("click", () => deleteUrl(+btn.dataset.del, btn.closest(".url-item").querySelector(".url-label").textContent));
       });
 
       list.querySelectorAll(".url-item").forEach(addDragListeners);
@@ -253,17 +250,26 @@
   }
 
   async function load() {
-    state = await api("GET", "/api/config");
-    renderUrls();
-    renderMode();
+    try {
+      state = await api("GET", "/api/config");
+      renderUrls();
+      renderMode();
+    } catch (e) {
+      toast("Failed to load config — is the server running?", true);
+    }
   }
 
-  async function deleteUrl(id) {
-    await api("DELETE", `/api/urls/${id}`);
-    state = await api("GET", "/api/config");
-    renderUrls();
-    renderMode();
-    toast("URL removed");
+  async function deleteUrl(id, label) {
+    if (!confirm(`Remove "${label}"?`)) return;
+    try {
+      await api("DELETE", `/api/urls/${id}`);
+      state = await api("GET", "/api/config");
+      renderUrls();
+      renderMode();
+      toast("URL removed");
+    } catch (e) {
+      toast(e.message, true);
+    }
   }
 
   document.getElementById("btn-add").addEventListener("click", async () => {
@@ -313,6 +319,7 @@
       e.dataTransfer.effectAllowed = "move";
     });
     item.addEventListener("dragend", () => {
+      dragSrc = null;
       item.classList.remove("dragging");
       document.querySelectorAll(".url-item").forEach(i => i.classList.remove("drag-over"));
     });
@@ -331,10 +338,15 @@
       const dstIdx = items.indexOf(item);
       if (srcIdx < dstIdx) item.after(dragSrc); else item.before(dragSrc);
       const ids = [...list.querySelectorAll(".url-item")].map(i => +i.dataset.id);
-      await api("PUT", "/api/urls/reorder", { ids });
-      state = await api("GET", "/api/config");
-      renderUrls();
-      renderMode();
+      try {
+        await api("PUT", "/api/urls/reorder", { ids });
+        state = await api("GET", "/api/config");
+        renderUrls();
+        renderMode();
+      } catch (e) {
+        toast(e.message, true);
+        await load();
+      }
     });
   }
 

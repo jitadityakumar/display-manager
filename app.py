@@ -10,6 +10,7 @@ def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH)
         g.db.row_factory = sqlite3.Row
+        g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
 
@@ -23,6 +24,7 @@ def close_db(exc):
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     db = sqlite3.connect(DB_PATH)
+    db.execute("PRAGMA foreign_keys = ON")
     db.execute("""
         CREATE TABLE IF NOT EXISTS urls (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,16 +64,20 @@ def admin():
 @app.route("/api/config", methods=["GET"])
 def get_config():
     db = get_db()
-    cfg = db.execute("SELECT * FROM config WHERE id = 1").fetchone()
+    row = db.execute("""
+        SELECT c.mode, c.interval_secs, c.active_url_id,
+               u.id AS u_id, u.label AS u_label, u.url AS u_url
+        FROM config c
+        LEFT JOIN urls u ON u.id = c.active_url_id
+        WHERE c.id = 1
+    """).fetchone()
     urls = db.execute("SELECT * FROM urls ORDER BY position, id").fetchall()
     active = None
-    if cfg["active_url_id"]:
-        row = db.execute("SELECT * FROM urls WHERE id = ?", (cfg["active_url_id"],)).fetchone()
-        if row:
-            active = {"id": row["id"], "label": row["label"], "url": row["url"]}
+    if row["u_id"]:
+        active = {"id": row["u_id"], "label": row["u_label"], "url": row["u_url"]}
     return jsonify({
-        "mode": cfg["mode"],
-        "interval_secs": cfg["interval_secs"],
+        "mode": row["mode"],
+        "interval_secs": row["interval_secs"],
         "active_url": active,
         "urls": [{"id": r["id"], "label": r["label"], "url": r["url"]} for r in urls],
     })
@@ -123,6 +129,8 @@ def add_url():
     url = (data.get("url") or "").strip()
     if not url:
         abort(400, "url is required")
+    if not url.startswith(("http://", "https://")):
+        abort(400, "url must start with http:// or https://")
     if not label:
         label = url
     db = get_db()
@@ -143,9 +151,6 @@ def delete_url(url_id):
     if not row:
         abort(404, "URL not found")
     db.execute("DELETE FROM urls WHERE id = ?", (url_id,))
-    cfg = db.execute("SELECT active_url_id FROM config WHERE id = 1").fetchone()
-    if cfg["active_url_id"] == url_id:
-        db.execute("UPDATE config SET active_url_id = NULL WHERE id = 1")
     db.commit()
     return "", 204
 
@@ -158,6 +163,9 @@ def reorder_urls():
     if not isinstance(ids, list):
         abort(400, "ids must be a list")
     db = get_db()
+    existing = {r["id"] for r in db.execute("SELECT id FROM urls").fetchall()}
+    if set(ids) != existing:
+        abort(400, "ids must contain exactly the current set of URL ids")
     for pos, url_id in enumerate(ids):
         db.execute("UPDATE urls SET position = ? WHERE id = ?", (pos, url_id))
     db.commit()

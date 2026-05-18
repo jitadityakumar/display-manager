@@ -39,6 +39,8 @@
   let cycleIndex = 0;
   let cycleTimer = null;
   let pollTimer = null;
+  let currentInterval = 30;
+  let currentMode = null;
 
   function showUrl(url) {
     if (!url) {
@@ -51,28 +53,48 @@
     if (frame.src !== url) frame.src = url;
   }
 
-  function applyConfig(cfg) {
-    clearTimeout(cycleTimer);
-
-    if (cfg.mode === "single") {
-      showUrl(cfg.active_url ? cfg.active_url.url : null);
-    } else {
-      // cycle mode
-      urls = (cfg.urls || []).map(u => u.url);
-      if (urls.length === 0) {
-        showUrl(null);
-        return;
-      }
-      cycleIndex = cycleIndex % urls.length;
+  function scheduleCycle() {
+    cycleTimer = setTimeout(() => {
+      cycleIndex = (cycleIndex + 1) % urls.length;
       showUrl(urls[cycleIndex]);
+      scheduleCycle();
+    }, currentInterval * 1000);
+  }
 
-      function next() {
-        cycleIndex = (cycleIndex + 1) % urls.length;
-        showUrl(urls[cycleIndex]);
-        cycleTimer = setTimeout(next, cfg.interval_secs * 1000);
-      }
-      cycleTimer = setTimeout(next, cfg.interval_secs * 1000);
+  function applyConfig(cfg) {
+    if (cfg.mode === "single") {
+      clearTimeout(cycleTimer);
+      cycleTimer = null;
+      currentMode = "single";
+      showUrl(cfg.active_url ? cfg.active_url.url : null);
+      return;
     }
+
+    // cycle mode
+    const newUrls = (cfg.urls || []).map(u => u.url);
+    const urlsChanged = JSON.stringify(newUrls) !== JSON.stringify(urls);
+    const intervalChanged = cfg.interval_secs !== currentInterval;
+
+    urls = newUrls;
+    currentInterval = cfg.interval_secs;
+
+    if (urls.length === 0) {
+      clearTimeout(cycleTimer);
+      cycleTimer = null;
+      currentMode = "cycle";
+      showUrl(null);
+      return;
+    }
+
+    // Only restart the cycle if something meaningful changed or we just entered cycle mode
+    if (currentMode !== "cycle" || urlsChanged || intervalChanged) {
+      clearTimeout(cycleTimer);
+      if (urlsChanged) cycleIndex = 0;
+      currentMode = "cycle";
+      showUrl(urls[cycleIndex]);
+      scheduleCycle();
+    }
+    // Otherwise let the existing timer run uninterrupted
   }
 
   function poll() {
@@ -80,7 +102,6 @@
       .then(r => r.json())
       .then(cfg => {
         applyConfig(cfg);
-        // re-poll: use interval_secs but clamp between 10s and 60s
         const delay = Math.min(60, Math.max(10, cfg.interval_secs)) * 1000;
         pollTimer = setTimeout(poll, delay);
       })

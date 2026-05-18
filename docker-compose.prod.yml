@@ -8,3 +8,7 @@ services:
     environment:
       DB_PATH: /data/display.db
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
