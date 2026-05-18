@@ -144,6 +144,27 @@ def add_url():
     return jsonify({"id": row["id"], "label": row["label"], "url": row["url"], "position": row["position"]}), 201
 
 
+@app.route("/api/urls/<int:url_id>", methods=["PUT"])
+def update_url(url_id):
+    db = get_db()
+    row = db.execute("SELECT * FROM urls WHERE id = ?", (url_id,)).fetchone()
+    if not row:
+        abort(404, "URL not found")
+    data = request.get_json(force=True)
+    label = (data.get("label") or "").strip()
+    url = (data.get("url") or "").strip()
+    if not url:
+        abort(400, "url is required")
+    if not url.startswith(("http://", "https://")):
+        abort(400, "url must start with http:// or https://")
+    if not label:
+        label = url
+    db.execute("UPDATE urls SET label=?, url=? WHERE id=?", (label, url, url_id))
+    db.commit()
+    row = db.execute("SELECT * FROM urls WHERE id = ?", (url_id,)).fetchone()
+    return jsonify({"id": row["id"], "label": row["label"], "url": row["url"], "position": row["position"]})
+
+
 @app.route("/api/urls/<int:url_id>", methods=["DELETE"])
 def delete_url(url_id):
     db = get_db()

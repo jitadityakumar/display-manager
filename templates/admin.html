@@ -16,7 +16,10 @@
     padding: 2rem 1rem;
   }
 
-  h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 2rem; color: #f8fafc; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+  h1 { font-size: 1.4rem; font-weight: 600; margin: 0; color: #f8fafc; }
+  .kiosk-link { font-size: .85rem; color: #6366f1; text-decoration: none; }
+  .kiosk-link:hover { color: #818cf8; text-decoration: underline; }
   h2 { font-size: 1rem; font-weight: 600; margin: 0 0 1rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; }
 
   .container { max-width: 680px; margin: 0 auto; }
@@ -66,6 +69,14 @@
 
   .btn-danger { background: #ef4444; color: #fff; padding: .3rem .7rem; font-size: .8rem; }
   .btn-danger:hover:not(:disabled) { background: #dc2626; }
+
+  .btn-edit { background: #334155; color: #e2e8f0; padding: .3rem .7rem; font-size: .8rem; }
+  .btn-edit:hover:not(:disabled) { background: #475569; }
+
+  .url-item.editing { cursor: default; flex-wrap: wrap; gap: .5rem; }
+  .url-item.editing .edit-fields { flex: 1 1 100%; display: flex; flex-direction: column; gap: .4rem; }
+  .url-item.editing .edit-fields input { font-size: .85rem; padding: .35rem .6rem; }
+  .url-item.editing .edit-actions { display: flex; gap: .4rem; margin-left: auto; }
 
   /* URL list */
   #url-list { list-style: none; margin: 0; padding: 0; }
@@ -138,31 +149,14 @@
 </head>
 <body>
 <div class="container">
-  <h1>Display Manager</h1>
-
-  <!-- URL List -->
-  <div class="card">
-    <h2>URLs</h2>
-    <ul id="url-list"><li class="empty-state">No URLs yet.</li></ul>
-
-    <div style="margin-top:1rem;">
-      <div class="row">
-        <div>
-          <label for="new-label">Label</label>
-          <input type="text" id="new-label" placeholder="My Dashboard">
-        </div>
-        <div>
-          <label for="new-url">URL</label>
-          <input type="text" id="new-url" placeholder="https://...">
-        </div>
-        <button class="btn-primary btn-add" id="btn-add">Add</button>
-      </div>
-    </div>
+  <div class="header">
+    <h1>Display Manager</h1>
+    <a href="/kiosk" target="_blank" class="kiosk-link">Open Kiosk ↗</a>
   </div>
 
-  <!-- Display Settings -->
+  <!-- Display -->
   <div class="card">
-    <h2>Display Mode</h2>
+    <h2>Display</h2>
 
     <div class="mode-row">
       <button class="mode-btn" id="btn-single" data-mode="single">Single</button>
@@ -181,6 +175,30 @@
 
     <div class="save-row">
       <button class="btn-primary" id="btn-save">Save settings</button>
+    </div>
+  </div>
+
+  <!-- URLs -->
+  <div class="card">
+    <h2>URLs</h2>
+    <ul id="url-list"><li class="empty-state">No URLs yet.</li></ul>
+  </div>
+
+  <!-- Add -->
+  <div class="card">
+    <h2>Add</h2>
+    <div style="display:flex; flex-direction:column; gap:.75rem;">
+      <div>
+        <label for="new-label">Label</label>
+        <input type="text" id="new-label" placeholder="My Dashboard">
+      </div>
+      <div>
+        <label for="new-url">URL</label>
+        <input type="text" id="new-url" placeholder="https://...">
+      </div>
+      <div style="display:flex; justify-content:flex-end;">
+        <button class="btn-primary btn-add" id="btn-add">Add</button>
+      </div>
     </div>
   </div>
 </div>
@@ -222,12 +240,20 @@
             <div class="url-label">${esc(u.label)}</div>
             <div class="url-href">${esc(u.url)}</div>
           </div>
+          <button class="btn-edit" data-edit="${u.id}">Edit</button>
           <button class="btn-danger" data-del="${u.id}">Remove</button>
         </li>
       `).join("");
 
       list.querySelectorAll("[data-del]").forEach(btn => {
         btn.addEventListener("click", () => deleteUrl(+btn.dataset.del, btn.closest(".url-item").querySelector(".url-label").textContent));
+      });
+
+      list.querySelectorAll("[data-edit]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const u = state.urls.find(u => u.id === +btn.dataset.edit);
+          if (u) editUrl(btn.closest(".url-item"), u);
+        });
       });
 
       list.querySelectorAll(".url-item").forEach(addDragListeners);
@@ -347,6 +373,50 @@
         toast(e.message, true);
         await load();
       }
+    });
+  }
+
+  function editUrl(item, u) {
+    item.classList.add("editing");
+    item.draggable = false;
+    item.innerHTML = `
+      <div class="edit-fields">
+        <input type="text" class="edit-label" value="${esc(u.label)}" placeholder="Label">
+        <input type="text" class="edit-url" value="${esc(u.url)}" placeholder="https://...">
+      </div>
+      <div class="edit-actions">
+        <button class="btn-primary btn-save-edit">Save</button>
+        <button class="btn-edit btn-cancel-edit">Cancel</button>
+      </div>
+    `;
+    item.querySelector(".edit-label").focus();
+
+    item.querySelector(".btn-cancel-edit").addEventListener("click", () => {
+      renderUrls();
+      renderMode();
+    });
+
+    const doSave = async () => {
+      const label = item.querySelector(".edit-label").value.trim();
+      const url   = item.querySelector(".edit-url").value.trim();
+      try {
+        await api("PUT", `/api/urls/${u.id}`, { label, url });
+        state = await api("GET", "/api/config");
+        renderUrls();
+        renderMode();
+        toast("URL updated");
+      } catch (e) {
+        toast(e.message, true);
+      }
+    };
+
+    item.querySelector(".btn-save-edit").addEventListener("click", doSave);
+    item.querySelector(".edit-url").addEventListener("keydown", e => {
+      if (e.key === "Enter") doSave();
+      if (e.key === "Escape") { renderUrls(); renderMode(); }
+    });
+    item.querySelector(".edit-label").addEventListener("keydown", e => {
+      if (e.key === "Escape") { renderUrls(); renderMode(); }
     });
   }
 
