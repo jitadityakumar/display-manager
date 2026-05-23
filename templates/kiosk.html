@@ -125,6 +125,7 @@
 
   let kioskState    = 'displaying'; // 'displaying' | 'menu'
   let selectedDigit = null;
+  let sleepSelected = false;
   let menuTimer     = null;
   let displayTimer  = null;
 
@@ -135,6 +136,7 @@
 
   function openMenu() {
     selectedDigit = null;
+    sleepSelected = false;
     const urlItems = allUrls.map((u, i) =>
       `<div class="menu-item" data-idx="${i}"><span class="menu-num">${i + 1}</span><span class="menu-label">${u.label}</span></div>`
     ).join("");
@@ -155,6 +157,7 @@
   function closeMenu(restartTimer = true) {
     menuEl.style.display = "none";
     selectedDigit = null;
+    sleepSelected = false;
     kioskState = 'displaying';
 
     clearTimeout(menuTimer);
@@ -163,10 +166,11 @@
   }
 
   function highlightDigit(n) {
-    selectedDigit = n;
     const sleepIdx = allUrls.length + 1;
+    sleepSelected = (n === sleepIdx);
+    selectedDigit = sleepSelected ? null : n;
     menuListEl.querySelectorAll('.menu-item').forEach((el, i) => {
-      el.classList.toggle('selected', n === sleepIdx ? el.dataset.idx === 'sleep' : i === n - 1);
+      el.classList.toggle('selected', sleepSelected ? el.dataset.idx === 'sleep' : i === n - 1);
     });
   }
 
@@ -186,13 +190,13 @@
       return;
     }
 
-    if (e.key === 'Enter') {
-      if (selectedDigit === null) return;
-      if (selectedDigit === allUrls.length + 1) {
+    if (e.key === 'Enter' || e.code === 'NumpadEnter') {
+      if (sleepSelected) {
         closeMenu(false);
         monitorSleep();
         return;
       }
+      if (selectedDigit === null) return;
       const idx = selectedDigit - 1;
       if (idx < 0 || idx >= allUrls.length) return;
       const url = allUrls[idx];
