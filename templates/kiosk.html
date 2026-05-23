@@ -135,9 +135,11 @@
 
   function openMenu() {
     selectedDigit = null;
-    menuListEl.innerHTML = allUrls.map((u, i) =>
+    const urlItems = allUrls.map((u, i) =>
       `<div class="menu-item" data-idx="${i}"><span class="menu-num">${i + 1}</span><span class="menu-label">${u.label}</span></div>`
     ).join("");
+    const sleepItem = `<div class="menu-item" data-idx="sleep"><span class="menu-num">${allUrls.length + 1}</span><span class="menu-label">Turn screen off</span></div>`;
+    menuListEl.innerHTML = urlItems + sleepItem;
     menuEl.style.display = "flex";
     document.body.focus();
     kioskState = 'menu';
@@ -150,20 +152,21 @@
     }, MENU_MS);
   }
 
-  function closeMenu() {
+  function closeMenu(restartTimer = true) {
     menuEl.style.display = "none";
     selectedDigit = null;
     kioskState = 'displaying';
 
     clearTimeout(menuTimer);
     menuTimer = null;
-    displayTimer = setTimeout(monitorSleep, DISPLAY_MS);
+    if (restartTimer) displayTimer = setTimeout(monitorSleep, DISPLAY_MS);
   }
 
   function highlightDigit(n) {
     selectedDigit = n;
+    const sleepIdx = allUrls.length + 1;
     menuListEl.querySelectorAll('.menu-item').forEach((el, i) => {
-      el.classList.toggle('selected', i === n - 1);
+      el.classList.toggle('selected', n === sleepIdx ? el.dataset.idx === 'sleep' : i === n - 1);
     });
   }
 
@@ -185,6 +188,11 @@
 
     if (e.key === 'Enter') {
       if (selectedDigit === null) return;
+      if (selectedDigit === allUrls.length + 1) {
+        closeMenu(false);
+        monitorSleep();
+        return;
+      }
       const idx = selectedDigit - 1;
       if (idx < 0 || idx >= allUrls.length) return;
       const url = allUrls[idx];
