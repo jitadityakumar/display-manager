@@ -52,6 +52,13 @@
     align-items: center;
     gap: 1.5rem;
   }
+  .menu-item.selected .menu-num {
+    background: #fff;
+    color: #000;
+  }
+  .menu-item.selected .menu-label {
+    color: #fff;
+  }
   .menu-num {
     background: #333;
     color: #fff;
@@ -76,7 +83,7 @@
 </style>
 </head>
 <body>
-<iframe id="frame" src="about:blank" allowfullscreen></iframe>
+<iframe id="frame" src="about:blank" allowfullscreen tabindex="-1"></iframe>
 <div id="error">No URL configured.<br>Visit <strong>/admin</strong> to add one.</div>
 <div id="menu">
   <h1>Select a display</h1>
@@ -90,24 +97,104 @@
   const menuEl = document.getElementById("menu");
   const menuListEl = document.getElementById("menu-list");
 
-  let urls = [];
   let allUrls = [];
+  let urls = [];
   let cycleIndex = 0;
   let cycleTimer = null;
   let pollTimer = null;
   let currentInterval = 30;
   let currentMode = null;
 
-  function showMenu(urlList) {
-    menuListEl.innerHTML = urlList.map((u, i) =>
-      `<div class="menu-item"><span class="menu-num">${i + 1}</span><span class="menu-label">${u.label}</span></div>`
-    ).join("");
-    menuEl.style.display = "flex";
+  // --- numpad state machine ---
+
+  const MENU_MS    = 5 * 60 * 1000;
+  const DISPLAY_MS = 15 * 60 * 1000;
+
+  let kioskState    = 'displaying'; // 'displaying' | 'menu'
+  let selectedDigit = null;
+  let menuTimer     = null;
+  let displayTimer  = null;
+
+  function monitorSleep() {
+    fetch("/api/monitor", { method: "POST", headers: {"Content-Type": "application/json"}, body: '{"action":"sleep"}' })
+      .catch(() => {});
   }
 
-  function hideMenu() {
-    menuEl.style.display = "none";
+  function openMenu() {
+    selectedDigit = null;
+    menuListEl.innerHTML = allUrls.map((u, i) =>
+      `<div class="menu-item" data-idx="${i}"><span class="menu-num">${i + 1}</span><span class="menu-label">${u.label}</span></div>`
+    ).join("");
+    menuEl.style.display = "flex";
+    document.body.focus();
+    kioskState = 'menu';
+
+    clearTimeout(displayTimer);
+    displayTimer = null;
+    menuTimer = setTimeout(() => {
+      closeMenu();
+      monitorSleep();
+    }, MENU_MS);
   }
+
+  function closeMenu() {
+    menuEl.style.display = "none";
+    selectedDigit = null;
+    kioskState = 'displaying';
+
+    clearTimeout(menuTimer);
+    menuTimer = null;
+    displayTimer = setTimeout(monitorSleep, DISPLAY_MS);
+  }
+
+  function highlightDigit(n) {
+    selectedDigit = n;
+    menuListEl.querySelectorAll('.menu-item').forEach((el, i) => {
+      el.classList.toggle('selected', i === n - 1);
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    // Numpad digits 1-9 (numlock on sends Numpad1..Numpad9)
+    const numpadMatch = e.code.match(/^Numpad([1-9])$/);
+    const digit = numpadMatch ? parseInt(numpadMatch[1]) : null;
+
+    if (kioskState === 'displaying') {
+      openMenu();
+      if (digit) highlightDigit(digit);
+      return;
+    }
+
+    // kioskState === 'menu'
+    if (digit) {
+      highlightDigit(digit);
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      if (selectedDigit === null) return;
+      const idx = selectedDigit - 1;
+      if (idx < 0 || idx >= allUrls.length) return;
+      const url = allUrls[idx];
+      fetch("/api/config", {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ mode: "single", active_url_id: url.id }),
+      })
+        .then(r => r.json())
+        .then(applyConfig)
+        .catch(() => {});
+      closeMenu();
+      return;
+    }
+
+    if (e.key === 'Backspace') {
+      closeMenu();
+      return;
+    }
+  });
+
+  // --- config polling and display ---
 
   function showUrl(url) {
     if (!url) {
@@ -130,12 +217,6 @@
 
   function applyConfig(cfg) {
     allUrls = cfg.urls || [];
-
-    if (cfg.menu_active) {
-      showMenu(allUrls);
-      return;
-    }
-    hideMenu();
 
     if (cfg.mode === "single") {
       clearTimeout(cycleTimer);
@@ -177,7 +258,7 @@
       .then(r => r.json())
       .then(cfg => {
         applyConfig(cfg);
-        const delay = cfg.menu_active ? 1000 : Math.min(60, Math.max(10, cfg.interval_secs)) * 1000;
+        const delay = Math.min(60, Math.max(10, cfg.interval_secs)) * 1000;
         pollTimer = setTimeout(poll, delay);
       })
       .catch(() => {
