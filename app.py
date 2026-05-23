@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import subprocess
 from flask import Flask, g, jsonify, render_template, request, abort
 
 app = Flask(__name__)
@@ -71,7 +72,7 @@ def admin():
 def get_config():
     db = get_db()
     row = db.execute("""
-        SELECT c.mode, c.interval_secs, c.active_url_id, c.menu_active,
+        SELECT c.mode, c.interval_secs, c.active_url_id,
                u.id AS u_id, u.label AS u_label, u.url AS u_url
         FROM config c
         LEFT JOIN urls u ON u.id = c.active_url_id
@@ -86,7 +87,6 @@ def get_config():
         "interval_secs": row["interval_secs"],
         "active_url": active,
         "urls": [{"id": r["id"], "label": r["label"], "url": r["url"]} for r in urls],
-        "menu_active": bool(row["menu_active"]),
     })
 
 
@@ -114,14 +114,27 @@ def update_config():
         if not exists:
             abort(400, "active_url_id not found")
 
-    menu_active = int(bool(data.get("menu_active", cfg["menu_active"])))
-
     db.execute(
-        "UPDATE config SET mode=?, interval_secs=?, active_url_id=?, menu_active=? WHERE id=1",
-        (mode, interval_secs, active_url_id, menu_active),
+        "UPDATE config SET mode=?, interval_secs=?, active_url_id=? WHERE id=1",
+        (mode, interval_secs, active_url_id),
     )
     db.commit()
     return get_config()
+
+
+@app.route("/api/monitor", methods=["POST"])
+def monitor_control():
+    data = request.get_json(force=True)
+    action = data.get("action")
+    if action not in ("wake", "sleep"):
+        abort(400, "action must be 'wake' or 'sleep'")
+    env = {**os.environ, "DISPLAY": ":0"}
+    if action == "wake":
+        subprocess.run(["xset", "dpms", "force", "on"], env=env, capture_output=True)
+        subprocess.run(["xset", "-dpms"], env=env, capture_output=True)
+    else:
+        subprocess.run(["xset", "dpms", "force", "off"], env=env, capture_output=True)
+    return "", 204
 
 
 @app.route("/api/urls", methods=["GET"])

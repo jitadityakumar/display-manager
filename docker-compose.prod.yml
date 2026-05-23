@@ -5,8 +5,12 @@ services:
       - "8080:8080"
     volumes:
       - /home/jkumar/github/display-manager/data:/data
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - /home/jkumar/.Xauthority:/tmp/.Xauthority:ro
     environment:
       DB_PATH: /data/display.db
+      DISPLAY: ":0"
+      XAUTHORITY: /tmp/.Xauthority
     restart: always
     deploy:
       resources:
