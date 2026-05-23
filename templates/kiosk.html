@@ -80,10 +80,18 @@
     font-size: 1rem;
     color: #555;
   }
+  #focus-trap {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    outline: none;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
 <iframe id="frame" src="about:blank" allowfullscreen tabindex="-1"></iframe>
+<div id="focus-trap" tabindex="0"></div>
 <div id="error">No URL configured.<br>Visit <strong>/admin</strong> to add one.</div>
 <div id="menu">
   <h1>Select a display</h1>
@@ -96,6 +104,11 @@
   const errorEl = document.getElementById("error");
   const menuEl = document.getElementById("menu");
   const menuListEl = document.getElementById("menu-list");
+  const focusTrap = document.getElementById("focus-trap");
+
+  // Keep focus on the trap so keydown events never get swallowed by the iframe
+  focusTrap.focus();
+  focusTrap.addEventListener("blur", () => requestAnimationFrame(() => focusTrap.focus()));
 
   let allUrls = [];
   let urls = [];
