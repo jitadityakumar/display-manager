@@ -42,6 +42,7 @@ def main():
         sys.exit(1)
 
     print(f'watching {dev.name} ({DEVICE})')
+    _reset_idle_timer()
 
     try:
         for event in dev.read_loop():
