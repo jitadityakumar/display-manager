@@ -7,9 +7,9 @@ Before=kiosk.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/opt/display-manager
-ExecStart=/usr/bin/docker compose -f /opt/display-manager/docker-compose.prod.yml up -d
-ExecStop=/usr/bin/docker compose -f /opt/display-manager/docker-compose.prod.yml down
+WorkingDirectory=/home/jkumar/github/display-manager
+ExecStart=/usr/bin/docker compose -f /home/jkumar/github/display-manager/docker-compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose -f /home/jkumar/github/display-manager/docker-compose.prod.yml down
 TimeoutStartSec=120
 
 [Install]

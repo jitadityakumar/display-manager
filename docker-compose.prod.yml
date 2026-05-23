@@ -4,7 +4,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - /opt/display-manager/data:/data
+      - /home/jkumar/github/display-manager/data:/data
     environment:
       DB_PATH: /data/display.db
     restart: always

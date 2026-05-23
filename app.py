@@ -38,10 +38,16 @@ def init_db():
             id INTEGER PRIMARY KEY CHECK (id = 1),
             mode TEXT NOT NULL DEFAULT 'single',
             interval_secs INTEGER NOT NULL DEFAULT 30,
-            active_url_id INTEGER REFERENCES urls(id) ON DELETE SET NULL
+            active_url_id INTEGER REFERENCES urls(id) ON DELETE SET NULL,
+            menu_active INTEGER NOT NULL DEFAULT 0
         )
     """)
     db.execute("INSERT OR IGNORE INTO config (id, mode, interval_secs) VALUES (1, 'single', 30)")
+    # Migration: add menu_active to existing databases
+    try:
+        db.execute("ALTER TABLE config ADD COLUMN menu_active INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     db.commit()
     db.close()
 
@@ -65,7 +71,7 @@ def admin():
 def get_config():
     db = get_db()
     row = db.execute("""
-        SELECT c.mode, c.interval_secs, c.active_url_id,
+        SELECT c.mode, c.interval_secs, c.active_url_id, c.menu_active,
                u.id AS u_id, u.label AS u_label, u.url AS u_url
         FROM config c
         LEFT JOIN urls u ON u.id = c.active_url_id
@@ -80,6 +86,7 @@ def get_config():
         "interval_secs": row["interval_secs"],
         "active_url": active,
         "urls": [{"id": r["id"], "label": r["label"], "url": r["url"]} for r in urls],
+        "menu_active": bool(row["menu_active"]),
     })
 
 
@@ -107,9 +114,11 @@ def update_config():
         if not exists:
             abort(400, "active_url_id not found")
 
+    menu_active = int(bool(data.get("menu_active", cfg["menu_active"])))
+
     db.execute(
-        "UPDATE config SET mode=?, interval_secs=?, active_url_id=? WHERE id=1",
-        (mode, interval_secs, active_url_id),
+        "UPDATE config SET mode=?, interval_secs=?, active_url_id=?, menu_active=? WHERE id=1",
+        (mode, interval_secs, active_url_id, menu_active),
     )
     db.commit()
     return get_config()
