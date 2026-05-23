@@ -173,8 +173,7 @@
     const digit = numpadMatch ? parseInt(numpadMatch[1]) : null;
 
     if (kioskState === 'displaying') {
-      openMenu();
-      if (digit) highlightDigit(digit);
+      if (e.key === 'Backspace') openMenu();
       return;
     }
 
