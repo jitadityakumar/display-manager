@@ -128,9 +128,18 @@
 
   /* Now Playing card */
   .now-playing-grid { display: flex; flex-direction: column; gap: .6rem; }
-  .np-row { display: flex; align-items: baseline; gap: .6rem; }
+  .np-row { display: flex; align-items: center; gap: .6rem; }
   .np-key { font-size: .8rem; color: #64748b; min-width: 4rem; }
   .np-val { font-size: .95rem; color: #e2e8f0; }
+
+  .monitor-dot {
+    width: .55rem; height: .55rem;
+    border-radius: 50%;
+    background: #64748b;
+    flex-shrink: 0;
+  }
+  .monitor-dot.on  { background: #22c55e; }
+  .monitor-dot.off { background: #ef4444; }
 
   /* URLs panel header */
   .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
@@ -189,6 +198,11 @@
   <div class="card">
     <h2>Now Playing</h2>
     <div class="now-playing-grid">
+      <div class="np-row">
+        <span class="np-key">Monitor</span>
+        <span class="monitor-dot" id="np-monitor-dot"></span>
+        <span class="np-val" id="np-monitor-label">—</span>
+      </div>
       <div class="np-row">
         <span class="np-key">Mode</span>
         <span class="np-val" id="np-mode">—</span>
@@ -254,7 +268,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  let state = { mode: "single", interval_secs: 30, active_url: null, urls: [] };
+  let state = { mode: "single", interval_secs: 30, active_url: null, now_playing: null, monitor_on: true, urls: [] };
   let dragSrc = null;
 
   async function api(method, path, body) {
@@ -315,7 +329,7 @@
   }
 
   function renderMode() {
-    const { mode, interval_secs, active_url } = state;
+    const { mode, interval_secs, now_playing, monitor_on } = state;
     document.getElementById("btn-single").className = "mode-btn" + (mode === "single" ? " selected" : "");
     document.getElementById("btn-cycle").className  = "mode-btn" + (mode === "cycle"  ? " selected" : "");
     document.getElementById("single-row").style.display  = mode === "single" ? "block" : "none";
@@ -323,7 +337,12 @@
     document.getElementById("interval-input").value = interval_secs;
 
     document.getElementById("np-mode").textContent = mode === "single" ? "Single" : `Cycle (every ${interval_secs}s)`;
-    document.getElementById("np-url").textContent  = active_url ? active_url.label : "—";
+    document.getElementById("np-url").textContent  = now_playing ? now_playing.label : "—";
+
+    const dot   = document.getElementById("np-monitor-dot");
+    const label = document.getElementById("np-monitor-label");
+    dot.className   = "monitor-dot " + (monitor_on ? "on" : "off");
+    label.textContent = monitor_on ? "On" : "Off";
   }
 
   async function load() {
@@ -505,7 +524,21 @@
     return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
 
+  async function pollStatus() {
+    try {
+      const cfg = await api("GET", "/api/config");
+      state.now_playing = cfg.now_playing;
+      state.monitor_on  = cfg.monitor_on;
+      const dot   = document.getElementById("np-monitor-dot");
+      const label = document.getElementById("np-monitor-label");
+      dot.className     = "monitor-dot " + (cfg.monitor_on ? "on" : "off");
+      label.textContent = cfg.monitor_on ? "On" : "Off";
+      document.getElementById("np-url").textContent = cfg.now_playing ? cfg.now_playing.label : "—";
+    } catch (_) {}
+  }
+
   load();
+  setInterval(pollStatus, 10000);
 </script>
 </body>
 </html>

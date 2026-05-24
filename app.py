@@ -44,11 +44,16 @@ def init_db():
         )
     """)
     db.execute("INSERT OR IGNORE INTO config (id, mode, interval_secs) VALUES (1, 'single', 30)")
-    # Migration: add menu_active to existing databases
-    try:
-        db.execute("ALTER TABLE config ADD COLUMN menu_active INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    for migration in [
+        "ALTER TABLE config ADD COLUMN menu_active INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE config ADD COLUMN now_playing_url_id INTEGER REFERENCES urls(id) ON DELETE SET NULL",
+        "ALTER TABLE config ADD COLUMN monitor_on INTEGER NOT NULL DEFAULT 1",
+    ]:
+        try:
+            db.execute(migration)
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e):
+                raise
     db.commit()
     db.close()
 
@@ -72,20 +77,28 @@ def admin():
 def get_config():
     db = get_db()
     row = db.execute("""
-        SELECT c.mode, c.interval_secs, c.active_url_id,
-               u.id AS u_id, u.label AS u_label, u.url AS u_url
+        SELECT c.mode, c.interval_secs, c.active_url_id, c.monitor_on,
+               c.now_playing_url_id,
+               u.id AS u_id, u.label AS u_label, u.url AS u_url,
+               np.id AS np_id, np.label AS np_label, np.url AS np_url
         FROM config c
-        LEFT JOIN urls u ON u.id = c.active_url_id
+        LEFT JOIN urls u  ON u.id  = c.active_url_id
+        LEFT JOIN urls np ON np.id = c.now_playing_url_id
         WHERE c.id = 1
     """).fetchone()
     urls = db.execute("SELECT * FROM urls ORDER BY position, id").fetchall()
     active = None
     if row["u_id"]:
         active = {"id": row["u_id"], "label": row["u_label"], "url": row["u_url"]}
+    now_playing = None
+    if row["np_id"]:
+        now_playing = {"id": row["np_id"], "label": row["np_label"], "url": row["np_url"]}
     return jsonify({
         "mode": row["mode"],
         "interval_secs": row["interval_secs"],
         "active_url": active,
+        "now_playing": now_playing,
+        "monitor_on": bool(row["monitor_on"]),
         "urls": [{"id": r["id"], "label": r["label"], "url": r["url"]} for r in urls],
     })
 
@@ -134,6 +147,23 @@ def monitor_control():
         subprocess.run(["xset", "-dpms"], env=env, capture_output=True)
     else:
         subprocess.run(["xset", "dpms", "force", "off"], env=env, capture_output=True)
+    db = get_db()
+    db.execute("UPDATE config SET monitor_on=? WHERE id=1", (1 if action == "wake" else 0,))
+    db.commit()
+    return "", 204
+
+
+@app.route("/api/now-playing", methods=["POST"])
+def set_now_playing():
+    data = request.get_json(force=True)
+    url_id = data.get("url_id")
+    db = get_db()
+    if url_id is not None:
+        exists = db.execute("SELECT id FROM urls WHERE id = ?", (url_id,)).fetchone()
+        if not exists:
+            abort(400, "url_id not found")
+    db.execute("UPDATE config SET now_playing_url_id=? WHERE id=1", (url_id,))
+    db.commit()
     return "", 204
 
 

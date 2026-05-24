@@ -111,7 +111,7 @@
   focusTrap.addEventListener("blur", () => requestAnimationFrame(() => focusTrap.focus()));
 
   let allUrls = [];
-  let urls = [];
+  let urls = [];      // full URL objects {id, label, url} in cycle mode
   let cycleIndex = 0;
   let cycleTimer = null;
   let pollTimer = null;
@@ -132,6 +132,18 @@
   function monitorSleep() {
     fetch("/api/monitor", { method: "POST", headers: {"Content-Type": "application/json"}, body: '{"action":"sleep"}' })
       .catch(() => {});
+  }
+
+  let lastReportedUrlId = undefined;
+
+  function reportNowPlaying(urlId) {
+    if (urlId === lastReportedUrlId) return;
+    lastReportedUrlId = urlId;
+    fetch("/api/now-playing", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ url_id: urlId }),
+    }).catch(() => { lastReportedUrlId = undefined; }); // retry next time on failure
   }
 
   function openMenu() {
@@ -234,7 +246,9 @@
   function scheduleCycle() {
     cycleTimer = setTimeout(() => {
       cycleIndex = (cycleIndex + 1) % urls.length;
-      showUrl(urls[cycleIndex]);
+      const u = urls[cycleIndex];
+      showUrl(u.url);
+      reportNowPlaying(u.id);
       scheduleCycle();
     }, currentInterval * 1000);
   }
@@ -246,13 +260,16 @@
       clearTimeout(cycleTimer);
       cycleTimer = null;
       currentMode = "single";
-      showUrl(cfg.active_url ? cfg.active_url.url : null);
+      const u = cfg.active_url;
+      showUrl(u ? u.url : null);
+      if (u) reportNowPlaying(u.id);
       return;
     }
 
     // cycle mode
-    const newUrls = (cfg.urls || []).map(u => u.url);
-    const urlsChanged = JSON.stringify(newUrls) !== JSON.stringify(urls);
+    const newUrls = cfg.urls || [];
+    const newUrlStr = JSON.stringify(newUrls.map(u => u.url));
+    const urlsChanged = newUrlStr !== JSON.stringify(urls.map(u => u.url));
     const intervalChanged = cfg.interval_secs !== currentInterval;
 
     urls = newUrls;
@@ -271,7 +288,9 @@
       clearTimeout(cycleTimer);
       if (urlsChanged) cycleIndex = 0;
       currentMode = "cycle";
-      showUrl(urls[cycleIndex]);
+      const u = urls[cycleIndex];
+      showUrl(u.url);
+      reportNowPlaying(u.id);
       scheduleCycle();
     }
     // Otherwise let the existing timer run uninterrupted
