@@ -172,6 +172,7 @@
     transform: translateY(10px);
     transition: opacity .2s, transform .2s;
     pointer-events: none;
+    z-index: 200;
   }
   .toast.show { opacity: 1; transform: translateY(0); }
   .toast.error { background: #ef4444; }
@@ -366,10 +367,14 @@
   }
 
   document.getElementById("btn-single").addEventListener("click", () => {
-    state.mode = "single"; renderMode(); saveSettings();
+    const prev = state.mode;
+    state.mode = "single"; renderMode();
+    saveSettings().catch(() => { state.mode = prev; renderMode(); });
   });
   document.getElementById("btn-cycle").addEventListener("click", () => {
-    state.mode = "cycle"; renderMode(); saveSettings();
+    const prev = state.mode;
+    state.mode = "cycle"; renderMode();
+    saveSettings().catch(() => { state.mode = prev; renderMode(); });
   });
 
   document.getElementById("active-select").addEventListener("change", () => saveSettings());
@@ -401,8 +406,8 @@
     if (!url) { toast("URL is required", true); return; }
     try {
       await api("POST", "/api/urls", { label: label || url, url });
-      closeAddModal();
       state = await api("GET", "/api/config");
+      closeAddModal();
       renderUrls();
       renderMode();
       toast("URL added");
