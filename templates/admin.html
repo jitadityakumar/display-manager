@@ -126,7 +126,37 @@
   #interval-row { display: none; margin-bottom: 1rem; }
   #single-row { display: none; margin-bottom: 1rem; }
 
-  .save-row { display: flex; justify-content: flex-end; }
+  /* Now Playing card */
+  .now-playing-grid { display: flex; flex-direction: column; gap: .6rem; }
+  .np-row { display: flex; align-items: baseline; gap: .6rem; }
+  .np-key { font-size: .8rem; color: #64748b; min-width: 4rem; }
+  .np-val { font-size: .95rem; color: #e2e8f0; }
+
+  /* URLs panel header */
+  .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .panel-header h2 { margin: 0; }
+  .btn-sm { background: #1e2130; border: 1px solid #2d3348; color: #94a3b8; padding: .3rem .75rem; font-size: .8rem; border-radius: 6px; }
+  .btn-sm:hover { background: #2d3348; color: #e2e8f0; }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .modal-backdrop.hidden { display: none; }
+  .modal {
+    background: #1e2130;
+    border: 1px solid #2d3348;
+    border-radius: 10px;
+    padding: 1.5rem;
+    width: 100%; max-width: 400px;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+  .modal h2 { margin: 0; }
+  .modal-fields { display: flex; flex-direction: column; gap: .75rem; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: .5rem; }
 
   .toast {
     position: fixed;
@@ -142,6 +172,7 @@
     transform: translateY(10px);
     transition: opacity .2s, transform .2s;
     pointer-events: none;
+    z-index: 200;
   }
   .toast.show { opacity: 1; transform: translateY(0); }
   .toast.error { background: #ef4444; }
@@ -154,9 +185,24 @@
     <a href="/kiosk" target="_blank" class="kiosk-link">Open Kiosk ↗</a>
   </div>
 
-  <!-- Display -->
+  <!-- Now Playing -->
   <div class="card">
-    <h2>Display</h2>
+    <h2>Now Playing</h2>
+    <div class="now-playing-grid">
+      <div class="np-row">
+        <span class="np-key">Mode</span>
+        <span class="np-val" id="np-mode">—</span>
+      </div>
+      <div class="np-row">
+        <span class="np-key">URL</span>
+        <span class="np-val" id="np-url">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="card">
+    <h2>Settings</h2>
 
     <div class="mode-row">
       <button class="mode-btn" id="btn-single" data-mode="single">Single</button>
@@ -172,22 +218,23 @@
       <label for="interval-input">Cycle interval (seconds)</label>
       <input type="number" id="interval-input" min="5" max="3600" value="30">
     </div>
-
-    <div class="save-row">
-      <button class="btn-primary" id="btn-save">Save settings</button>
-    </div>
   </div>
 
   <!-- URLs -->
   <div class="card">
-    <h2>URLs</h2>
+    <div class="panel-header">
+      <h2>URLs</h2>
+      <button class="btn-sm" id="btn-open-add">+ Add URL</button>
+    </div>
     <ul id="url-list"><li class="empty-state">No URLs yet.</li></ul>
   </div>
+</div>
 
-  <!-- Add -->
-  <div class="card">
-    <h2>Add</h2>
-    <div style="display:flex; flex-direction:column; gap:.75rem;">
+<!-- Add URL modal -->
+<div class="modal-backdrop hidden" id="add-modal">
+  <div class="modal">
+    <h2>Add URL</h2>
+    <div class="modal-fields">
       <div>
         <label for="new-label">Label</label>
         <input type="text" id="new-label" placeholder="My Dashboard">
@@ -196,9 +243,10 @@
         <label for="new-url">URL</label>
         <input type="text" id="new-url" placeholder="https://...">
       </div>
-      <div style="display:flex; justify-content:flex-end;">
-        <button class="btn-primary btn-add" id="btn-add">Add</button>
-      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-edit" id="btn-cancel-add">Cancel</button>
+      <button class="btn-primary" id="btn-add">Add</button>
     </div>
   </div>
 </div>
@@ -267,12 +315,15 @@
   }
 
   function renderMode() {
-    const { mode, interval_secs } = state;
+    const { mode, interval_secs, active_url } = state;
     document.getElementById("btn-single").className = "mode-btn" + (mode === "single" ? " selected" : "");
     document.getElementById("btn-cycle").className  = "mode-btn" + (mode === "cycle"  ? " selected" : "");
     document.getElementById("single-row").style.display  = mode === "single" ? "block" : "none";
     document.getElementById("interval-row").style.display = mode === "cycle"  ? "block" : "none";
     document.getElementById("interval-input").value = interval_secs;
+
+    document.getElementById("np-mode").textContent = mode === "single" ? "Single" : `Cycle (every ${interval_secs}s)`;
+    document.getElementById("np-url").textContent  = active_url ? active_url.label : "—";
   }
 
   async function load() {
@@ -298,29 +349,7 @@
     }
   }
 
-  document.getElementById("btn-add").addEventListener("click", async () => {
-    const label = document.getElementById("new-label").value.trim();
-    const url   = document.getElementById("new-url").value.trim();
-    if (!url) { toast("URL is required", true); return; }
-    try {
-      await api("POST", "/api/urls", { label: label || url, url });
-      document.getElementById("new-label").value = "";
-      document.getElementById("new-url").value = "";
-      state = await api("GET", "/api/config");
-      renderUrls();
-      renderMode();
-      toast("URL added");
-    } catch (e) { toast(e.message, true); }
-  });
-
-  document.getElementById("btn-single").addEventListener("click", () => {
-    state.mode = "single"; renderMode();
-  });
-  document.getElementById("btn-cycle").addEventListener("click", () => {
-    state.mode = "cycle"; renderMode();
-  });
-
-  document.getElementById("btn-save").addEventListener("click", async () => {
+  async function saveSettings() {
     const body = {
       mode: state.mode,
       interval_secs: +document.getElementById("interval-input").value,
@@ -335,6 +364,58 @@
       renderMode();
       toast("Settings saved");
     } catch (e) { toast(e.message, true); }
+  }
+
+  document.getElementById("btn-single").addEventListener("click", () => {
+    const prev = state.mode;
+    state.mode = "single"; renderMode();
+    saveSettings().catch(() => { state.mode = prev; renderMode(); });
+  });
+  document.getElementById("btn-cycle").addEventListener("click", () => {
+    const prev = state.mode;
+    state.mode = "cycle"; renderMode();
+    saveSettings().catch(() => { state.mode = prev; renderMode(); });
+  });
+
+  document.getElementById("active-select").addEventListener("change", () => saveSettings());
+  document.getElementById("interval-input").addEventListener("change", () => saveSettings());
+
+  // Modal
+  function openAddModal() {
+    document.getElementById("new-label").value = "";
+    document.getElementById("new-url").value = "";
+    document.getElementById("add-modal").classList.remove("hidden");
+    document.getElementById("new-label").focus();
+  }
+  function closeAddModal() {
+    document.getElementById("add-modal").classList.add("hidden");
+  }
+
+  document.getElementById("btn-open-add").addEventListener("click", openAddModal);
+  document.getElementById("btn-cancel-add").addEventListener("click", closeAddModal);
+  document.getElementById("add-modal").addEventListener("click", e => {
+    if (e.target === document.getElementById("add-modal")) closeAddModal();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeAddModal();
+  });
+
+  document.getElementById("btn-add").addEventListener("click", async () => {
+    const label = document.getElementById("new-label").value.trim();
+    const url   = document.getElementById("new-url").value.trim();
+    if (!url) { toast("URL is required", true); return; }
+    try {
+      await api("POST", "/api/urls", { label: label || url, url });
+      state = await api("GET", "/api/config");
+      closeAddModal();
+      renderUrls();
+      renderMode();
+      toast("URL added");
+    } catch (e) { toast(e.message, true); }
+  });
+
+  document.getElementById("new-url").addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("btn-add").click();
   });
 
   // Drag-to-reorder
