@@ -249,6 +249,11 @@
       const u = urls[cycleIndex];
       showUrl(u.url);
       reportNowPlaying(u.id);
+      // Each URL advance counts as activity when cycling faster than the sleep timeout
+      if (currentInterval * 1000 < DISPLAY_MS) {
+        clearTimeout(displayTimer);
+        displayTimer = setTimeout(monitorSleep, DISPLAY_MS);
+      }
       scheduleCycle();
     }, currentInterval * 1000);
   }
