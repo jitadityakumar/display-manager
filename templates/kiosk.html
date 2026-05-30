@@ -97,7 +97,7 @@
 <div id="menu">
   <h1>Select a display</h1>
   <div id="menu-list"></div>
-  <footer>Enter to confirm &nbsp;·&nbsp; Backspace to return</footer>
+  <footer>↑↓ to navigate &nbsp;·&nbsp; 1–9 to select &nbsp;·&nbsp; Enter to confirm &nbsp;·&nbsp; Backspace to return</footer>
 </div>
 
 <script>
@@ -124,11 +124,10 @@
   const MENU_MS    = 5 * 60 * 1000;
   const DISPLAY_MS = 15 * 60 * 1000;
 
-  let kioskState    = 'displaying'; // 'displaying' | 'menu'
-  let selectedDigit = null;
-  let sleepSelected = false;
-  let menuTimer     = null;
-  let displayTimer  = null;
+  let kioskState   = 'displaying'; // 'displaying' | 'menu'
+  let cursorPos    = null; // 1-based index across all menu items, null = nothing selected
+  let menuTimer    = null;
+  let displayTimer = null;
 
   function monitorSleep() {
     fetch("/api/monitor", { method: "POST", headers: {"Content-Type": "application/json"}, body: '{"action":"sleep"}' })
@@ -148,8 +147,7 @@
   }
 
   function openMenu() {
-    selectedDigit = null;
-    sleepSelected = false;
+    cursorPos = null;
     const urlItems = allUrls.map((u, i) =>
       `<div class="menu-item" data-idx="${i}"><span class="menu-num">${i + 1}</span><span class="menu-label">${u.label}</span></div>`
     ).join("");
@@ -169,8 +167,7 @@
 
   function closeMenu(restartTimer = true) {
     menuEl.style.display = "none";
-    selectedDigit = null;
-    sleepSelected = false;
+    cursorPos = null;
     kioskState = 'displaying';
 
     clearTimeout(menuTimer);
@@ -179,18 +176,17 @@
   }
 
   function highlightDigit(n) {
+    cursorPos = n;
     const sleepIdx = allUrls.length + 1;
-    sleepSelected = (n === sleepIdx);
-    selectedDigit = sleepSelected ? null : n;
     menuListEl.querySelectorAll('.menu-item').forEach((el, i) => {
-      el.classList.toggle('selected', sleepSelected ? el.dataset.idx === 'sleep' : i === n - 1);
+      el.classList.toggle('selected', n === sleepIdx ? el.dataset.idx === 'sleep' : i === n - 1);
     });
   }
 
   document.addEventListener('keydown', (e) => {
-    // Numpad digits 1-9 (numlock on sends Numpad1..Numpad9)
-    const numpadMatch = e.code.match(/^Numpad([1-9])$/);
-    const digit = numpadMatch ? parseInt(numpadMatch[1]) : null;
+    // Numpad and standard digit keys 1-9
+    const digitMatch = e.code.match(/^(?:Numpad|Digit)([1-9])$/);
+    const digit = digitMatch ? parseInt(digitMatch[1]) : null;
 
     if (kioskState === 'displaying') {
       if (e.key === 'Backspace') openMenu();
@@ -198,19 +194,31 @@
     }
 
     // kioskState === 'menu'
+    const total = allUrls.length + 1;
+
     if (digit) {
       highlightDigit(digit);
       return;
     }
 
+    if (e.key === 'ArrowDown') {
+      highlightDigit(cursorPos === null ? 1 : (cursorPos % total) + 1);
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      highlightDigit(cursorPos === null ? total : ((cursorPos - 2 + total) % total) + 1);
+      return;
+    }
+
     if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-      if (sleepSelected) {
+      if (cursorPos === null) return;
+      if (cursorPos === total) {
         closeMenu(false);
         monitorSleep();
         return;
       }
-      if (selectedDigit === null) return;
-      const idx = selectedDigit - 1;
+      const idx = cursorPos - 1;
       if (idx < 0 || idx >= allUrls.length) return;
       const url = allUrls[idx];
       fetch("/api/config", {
