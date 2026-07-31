@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
 COPY templates/ templates/
+COPY static/ static/
 
 RUN adduser --disabled-password --gecos '' --uid 1000 appuser \
     && mkdir -p /data && chown appuser:appuser /data
