@@ -327,6 +327,11 @@
       });
   }
 
+  // Fired once per real page load (not on every poll tick), so a restart
+  // is only confirmed "complete" once a freshly loaded page reports in —
+  // an old page's poll loop can't be mistaken for a reload.
+  fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
+
   poll();
   displayTimer = setTimeout(monitorSleep, DISPLAY_MS);
 </script>

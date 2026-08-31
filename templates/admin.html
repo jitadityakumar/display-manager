@@ -133,6 +133,8 @@
   /* Now Playing card */
   .now-playing-grid { display: flex; flex-direction: column; gap: .6rem; }
   .np-row { display: flex; align-items: center; gap: .6rem; }
+  .restart-row { display: flex; align-items: center; gap: .75rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #2d3348; }
+  .restart-row .np-val { font-size: .8rem; color: #94a3b8; }
   .np-key { font-size: .8rem; color: #64748b; min-width: 4rem; }
   .np-val { font-size: .95rem; color: #e2e8f0; }
 
@@ -215,6 +217,10 @@
         <span class="np-key">URL</span>
         <span class="np-val" id="np-url">—</span>
       </div>
+    </div>
+    <div class="restart-row">
+      <button class="btn-sm" id="btn-restart">Restart Kiosk</button>
+      <span class="np-val" id="restart-status"></span>
     </div>
   </div>
 
@@ -541,7 +547,71 @@
     } catch (_) {}
   }
 
+  const RESTART_TIMEOUT_MS = 120000;
+  let restartTimer = null;
+  let restartRequestedAt = null;
+  let restartWatchStartedAt = null;
+
+  function setRestartStatus(text) {
+    document.getElementById("restart-status").textContent = text;
+  }
+
+  function stopRestartWatch() {
+    if (restartTimer) clearInterval(restartTimer);
+    restartTimer = null;
+    document.getElementById("btn-restart").disabled = false;
+  }
+
+  function startRestartWatch(requestedAt) {
+    restartRequestedAt = requestedAt;
+    restartWatchStartedAt = Date.now();
+    document.getElementById("btn-restart").disabled = true;
+    setRestartStatus("Restarting…");
+    if (restartTimer) clearInterval(restartTimer);
+    restartTimer = setInterval(pollRestart, 2000);
+  }
+
+  async function pollRestart() {
+    try {
+      const r = await api("GET", "/api/restart");
+      if (r.last_seen_at && restartRequestedAt && r.last_seen_at >= restartRequestedAt) {
+        setRestartStatus("Kiosk back online");
+        stopRestartWatch();
+        return;
+      }
+      if (Date.now() - restartWatchStartedAt > RESTART_TIMEOUT_MS) {
+        setRestartStatus("Taking longer than expected — check the display");
+        stopRestartWatch();
+        return;
+      }
+      setRestartStatus(r.pending ? "Restarting…" : "Waiting for kiosk to reconnect…");
+    } catch (_) {}
+  }
+
+  document.getElementById("btn-restart").addEventListener("click", async () => {
+    document.getElementById("btn-restart").disabled = true;
+    try {
+      const r = await api("POST", "/api/restart");
+      startRestartWatch(r.requested_at);
+    } catch (e) {
+      document.getElementById("btn-restart").disabled = false;
+      toast(e.message, true);
+    }
+  });
+
+  async function resumeRestartWatchIfPending() {
+    try {
+      const r = await api("GET", "/api/restart");
+      if (!r.requested_at) return;
+      const alreadyOnline = r.last_seen_at && r.last_seen_at >= r.requested_at;
+      if (r.pending || !alreadyOnline) {
+        startRestartWatch(r.requested_at);
+      }
+    } catch (_) {}
+  }
+
   load();
+  resumeRestartWatchIfPending();
   setInterval(pollStatus, 10000);
 </script>
 </body>
