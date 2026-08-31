@@ -319,6 +319,7 @@
       .then(r => r.json())
       .then(cfg => {
         applyConfig(cfg);
+        fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
         const delay = Math.min(60, Math.max(10, cfg.interval_secs)) * 1000;
         pollTimer = setTimeout(poll, delay);
       })

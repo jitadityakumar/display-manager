@@ -133,6 +133,8 @@
   /* Now Playing card */
   .now-playing-grid { display: flex; flex-direction: column; gap: .6rem; }
   .np-row { display: flex; align-items: center; gap: .6rem; }
+  .restart-row { display: flex; align-items: center; gap: .75rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #2d3348; }
+  .restart-row .np-val { font-size: .8rem; color: #94a3b8; }
   .np-key { font-size: .8rem; color: #64748b; min-width: 4rem; }
   .np-val { font-size: .95rem; color: #e2e8f0; }
 
@@ -215,6 +217,10 @@
         <span class="np-key">URL</span>
         <span class="np-val" id="np-url">—</span>
       </div>
+    </div>
+    <div class="restart-row">
+      <button class="btn-sm" id="btn-restart">Restart Kiosk</button>
+      <span class="np-val" id="restart-status"></span>
     </div>
   </div>
 
@@ -540,6 +546,43 @@
       document.getElementById("np-url").textContent = cfg.now_playing ? cfg.now_playing.label : "—";
     } catch (_) {}
   }
+
+  let restartTimer = null;
+  let restartRequestedAt = null;
+
+  function setRestartStatus(text) {
+    document.getElementById("restart-status").textContent = text;
+  }
+
+  async function pollRestart() {
+    try {
+      const r = await api("GET", "/api/restart");
+      if (r.last_seen_at && restartRequestedAt && r.last_seen_at >= restartRequestedAt) {
+        setRestartStatus("Kiosk back online");
+        document.getElementById("btn-restart").disabled = false;
+        clearInterval(restartTimer);
+        restartTimer = null;
+      } else if (r.pending) {
+        setRestartStatus("Restarting…");
+      } else {
+        setRestartStatus("Waiting for kiosk to reconnect…");
+      }
+    } catch (_) {}
+  }
+
+  document.getElementById("btn-restart").addEventListener("click", async () => {
+    document.getElementById("btn-restart").disabled = true;
+    try {
+      const r = await api("POST", "/api/restart");
+      restartRequestedAt = r.requested_at;
+      setRestartStatus("Restarting…");
+      if (restartTimer) clearInterval(restartTimer);
+      restartTimer = setInterval(pollRestart, 2000);
+    } catch (e) {
+      document.getElementById("btn-restart").disabled = false;
+      toast(e.message, true);
+    }
+  });
 
   load();
   setInterval(pollStatus, 10000);

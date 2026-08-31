@@ -1,0 +1,15 @@
+[Unit]
+Description=Kiosk Restart Watcher for Display Manager
+After=display-manager.service
+Requires=display-manager.service
+
+[Service]
+Type=simple
+User=jkumar
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/jkumar/github/display-manager/restart-watcher/watcher.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

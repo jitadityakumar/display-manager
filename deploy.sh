@@ -27,9 +27,15 @@ echo "==> Pushing systemd service file"
 scp "$SCRIPT_DIR/display-manager.service" "$REMOTE:/tmp/display-manager.service"
 ssh "$REMOTE" "sudo cp /tmp/display-manager.service /etc/systemd/system/display-manager.service && sudo systemctl daemon-reload"
 
+echo "==> Pushing restart-watcher"
+ssh "$REMOTE" "mkdir -p $REMOTE_APP_DIR/restart-watcher"
+scp "$SCRIPT_DIR/restart-watcher/watcher.py" "$REMOTE:$REMOTE_APP_DIR/restart-watcher/watcher.py"
+scp "$SCRIPT_DIR/restart-watcher/restart-watcher.service" "$REMOTE:/tmp/restart-watcher.service"
+ssh "$REMOTE" "sudo cp /tmp/restart-watcher.service /etc/systemd/system/restart-watcher.service && sudo systemctl daemon-reload"
+
 echo "==> Restarting services"
-ssh "$REMOTE" "sudo systemctl restart display-manager && sudo systemctl restart kiosk"
+ssh "$REMOTE" "sudo systemctl restart display-manager && sudo systemctl restart kiosk && sudo systemctl restart restart-watcher"
 
 echo "==> Done. Verifying..."
 sleep 3
-ssh "$REMOTE" "systemctl is-active display-manager && systemctl is-active kiosk"
+ssh "$REMOTE" "systemctl is-active display-manager && systemctl is-active kiosk && systemctl is-active restart-watcher"

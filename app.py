@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import subprocess
+import time
 from flask import Flask, g, jsonify, render_template, request, abort
 
 app = Flask(__name__)
@@ -48,6 +49,9 @@ def init_db():
         "ALTER TABLE config ADD COLUMN menu_active INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE config ADD COLUMN now_playing_url_id INTEGER REFERENCES urls(id) ON DELETE SET NULL",
         "ALTER TABLE config ADD COLUMN monitor_on INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE config ADD COLUMN restart_pending INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE config ADD COLUMN restart_requested_at INTEGER",
+        "ALTER TABLE config ADD COLUMN last_seen_at INTEGER",
     ]:
         try:
             db.execute(migration)
@@ -163,6 +167,46 @@ def set_now_playing():
         if not exists:
             abort(400, "url_id not found")
     db.execute("UPDATE config SET now_playing_url_id=? WHERE id=1", (url_id,))
+    db.commit()
+    return "", 204
+
+
+@app.route("/api/heartbeat", methods=["POST"])
+def heartbeat():
+    db = get_db()
+    db.execute("UPDATE config SET last_seen_at=? WHERE id=1", (int(time.time()),))
+    db.commit()
+    return "", 204
+
+
+@app.route("/api/restart", methods=["GET"])
+def restart_status():
+    db = get_db()
+    row = db.execute(
+        "SELECT restart_pending, restart_requested_at, last_seen_at FROM config WHERE id=1"
+    ).fetchone()
+    return jsonify({
+        "pending": bool(row["restart_pending"]),
+        "requested_at": row["restart_requested_at"],
+        "last_seen_at": row["last_seen_at"],
+    })
+
+
+@app.route("/api/restart", methods=["POST"])
+def request_restart():
+    db = get_db()
+    db.execute(
+        "UPDATE config SET restart_pending=1, restart_requested_at=? WHERE id=1",
+        (int(time.time()),),
+    )
+    db.commit()
+    return restart_status()
+
+
+@app.route("/api/restart/ack", methods=["POST"])
+def ack_restart():
+    db = get_db()
+    db.execute("UPDATE config SET restart_pending=0 WHERE id=1")
     db.commit()
     return "", 204
 
