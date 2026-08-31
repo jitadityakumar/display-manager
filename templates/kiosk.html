@@ -319,7 +319,6 @@
       .then(r => r.json())
       .then(cfg => {
         applyConfig(cfg);
-        fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
         const delay = Math.min(60, Math.max(10, cfg.interval_secs)) * 1000;
         pollTimer = setTimeout(poll, delay);
       })
@@ -327,6 +326,11 @@
         pollTimer = setTimeout(poll, 15000);
       });
   }
+
+  // Fired once per real page load (not on every poll tick), so a restart
+  // is only confirmed "complete" once a freshly loaded page reports in —
+  // an old page's poll loop can't be mistaken for a reload.
+  fetch("/api/heartbeat", { method: "POST" }).catch(() => {});
 
   poll();
   displayTimer = setTimeout(monitorSleep, DISPLAY_MS);

@@ -547,11 +547,28 @@
     } catch (_) {}
   }
 
+  const RESTART_TIMEOUT_MS = 60000;
   let restartTimer = null;
   let restartRequestedAt = null;
+  let restartWatchStartedAt = null;
 
   function setRestartStatus(text) {
     document.getElementById("restart-status").textContent = text;
+  }
+
+  function stopRestartWatch() {
+    if (restartTimer) clearInterval(restartTimer);
+    restartTimer = null;
+    document.getElementById("btn-restart").disabled = false;
+  }
+
+  function startRestartWatch(requestedAt) {
+    restartRequestedAt = requestedAt;
+    restartWatchStartedAt = Date.now();
+    document.getElementById("btn-restart").disabled = true;
+    setRestartStatus("Restarting…");
+    if (restartTimer) clearInterval(restartTimer);
+    restartTimer = setInterval(pollRestart, 2000);
   }
 
   async function pollRestart() {
@@ -559,14 +576,15 @@
       const r = await api("GET", "/api/restart");
       if (r.last_seen_at && restartRequestedAt && r.last_seen_at >= restartRequestedAt) {
         setRestartStatus("Kiosk back online");
-        document.getElementById("btn-restart").disabled = false;
-        clearInterval(restartTimer);
-        restartTimer = null;
-      } else if (r.pending) {
-        setRestartStatus("Restarting…");
-      } else {
-        setRestartStatus("Waiting for kiosk to reconnect…");
+        stopRestartWatch();
+        return;
       }
+      if (Date.now() - restartWatchStartedAt > RESTART_TIMEOUT_MS) {
+        setRestartStatus("Taking longer than expected — check the display");
+        stopRestartWatch();
+        return;
+      }
+      setRestartStatus(r.pending ? "Restarting…" : "Waiting for kiosk to reconnect…");
     } catch (_) {}
   }
 
@@ -574,17 +592,26 @@
     document.getElementById("btn-restart").disabled = true;
     try {
       const r = await api("POST", "/api/restart");
-      restartRequestedAt = r.requested_at;
-      setRestartStatus("Restarting…");
-      if (restartTimer) clearInterval(restartTimer);
-      restartTimer = setInterval(pollRestart, 2000);
+      startRestartWatch(r.requested_at);
     } catch (e) {
       document.getElementById("btn-restart").disabled = false;
       toast(e.message, true);
     }
   });
 
+  async function resumeRestartWatchIfPending() {
+    try {
+      const r = await api("GET", "/api/restart");
+      if (!r.requested_at) return;
+      const alreadyOnline = r.last_seen_at && r.last_seen_at >= r.requested_at;
+      if (r.pending || !alreadyOnline) {
+        startRestartWatch(r.requested_at);
+      }
+    } catch (_) {}
+  }
+
   load();
+  resumeRestartWatchIfPending();
   setInterval(pollStatus, 10000);
 </script>
 </body>

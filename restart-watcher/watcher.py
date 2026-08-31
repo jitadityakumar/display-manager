@@ -7,6 +7,7 @@ import urllib.request
 
 API          = 'http://localhost:8080'
 POLL_SECS    = 2
+MAX_BACKOFF_SECS = 60
 
 
 def _get_restart_status():
@@ -21,6 +22,7 @@ def _ack_restart():
 
 def main():
     print('watching for kiosk restart requests')
+    consecutive_failures = 0
     while True:
         try:
             status = _get_restart_status()
@@ -28,9 +30,12 @@ def main():
                 print('restart requested, running systemctl restart kiosk')
                 subprocess.run(['sudo', 'systemctl', 'restart', 'kiosk'], check=True)
                 _ack_restart()
+            consecutive_failures = 0
         except Exception as e:
-            print(f'error: {e}', file=sys.stderr)
-        time.sleep(POLL_SECS)
+            consecutive_failures += 1
+            print(f'error (attempt {consecutive_failures}): {e}', file=sys.stderr)
+        backoff = min(POLL_SECS * (2 ** consecutive_failures), MAX_BACKOFF_SECS)
+        time.sleep(backoff)
 
 
 if __name__ == '__main__':
